@@ -1,74 +1,81 @@
-# :package_description
+# Laravel Morphed Model Exporter
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/:vendor_slug/:package_slug/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/:vendor_slug/:package_slug/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/:vendor_slug/:package_slug.svg?style=flat-square)](https://packagist.org/packages/:vendor_slug/:package_slug)
-<!--delete-->
----
-This repo can be used to scaffold a Laravel package. Follow these steps to get started:
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/comhon-project/laravel-morphed-model-exporter.svg?style=flat-square)](https://packagist.org/packages/comhon-project/laravel-morphed-model-exporter)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/comhon-project/laravel-morphed-model-exporter/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/comhon-project/laravel-morphed-model-exporter/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/comhon-project/laravel-morphed-model-exporter/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/comhon-project/laravel-morphed-model-exporter/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/comhon-project/laravel-morphed-model-exporter.svg?style=flat-square)](https://packagist.org/packages/comhon-project/laravel-morphed-model-exporter)
 
-1. Press the "Use this template" button at the top of this repo to create a new repo with the contents of this skeleton.
-2. Run "php ./configure.php" to run a script that will replace all placeholders throughout all the files.
-3. Have fun creating your package.
-4. If you need help creating a package, consider picking up our <a href="https://laravelpackage.training">Laravel Package Training</a> video course.
----
-<!--/delete-->
-This is where your description should go. Limit it to a paragraph or two. Consider adding a small example.
-
-## Support us
-
-[<img src="https://github-ads.s3.eu-central-1.amazonaws.com/:package_name.jpg?t=1" width="419px" />](https://spatie.be/github-ad-click/:package_name)
-
-We invest a lot of resources into creating [best in class open source packages](https://spatie.be/open-source). You can support us by [buying one of our paid products](https://spatie.be/open-source/support-us).
-
-We highly appreciate you sending us a postcard from your hometown, mentioning which of our package(s) you are using. You'll find our address on [our contact page](https://spatie.be/about-us). We publish all received postcards on [our virtual postcard wall](https://spatie.be/open-source/postcards).
+This library allows exporting morphed models (typically via an API). A morphed model is one that is loaded through a `MorphTo` relationship. Since these models belong to different classes, loading them from a collection along with their dependencies and exporting them can be cumbersome. This library makes it easy!
 
 ## Installation
 
 You can install the package via composer:
 
 ```bash
-composer require :vendor_slug/:package_slug
-```
-
-You can publish and run the migrations with:
-
-```bash
-php artisan vendor:publish --tag=":package_slug-migrations"
-php artisan migrate
-```
-
-You can publish the config file with:
-
-```bash
-php artisan vendor:publish --tag=":package_slug-config"
-```
-
-This is the contents of the published config file:
-
-```php
-return [
-];
-```
-
-Optionally, you can publish the views using
-
-```bash
-php artisan vendor:publish --tag=":package_slug-views"
+composer require comhon-project/laravel-morphed-model-exporter
 ```
 
 ## Usage
 
+### Register exporters
+
+In order to be able to export morphed models, you must define morphed model exporters.
+
+To do so, you must define a class with an `__invoke()` method that will return an array of exporters. Each key must be a eloquent model class and each value must be an array. Each array value must/may contain:
+
+-   the key `model_exporter` (required). The associated value must be either a Closure and return the exported model (the eloquent model is inject as parameter) either a JsonResource class.
+-   the key `query_builder` (optional). The associated value must be a Closure that will build the query given in parameter.
+
 ```php
-$variable = new VendorName\Skeleton();
-echo $variable->echoPhrase('Hello, VendorName!');
+class MyMorphedModelsExporters
+{
+    public function __construct(private array $exporters) {}
+
+    public function __invoke()
+    {
+        return [
+            FirstModel::class => [
+                'query_builder' => fn ($query) => $query->with('dependence')->select('id', 'dependence_id'),
+                'model_exporter' => fn ($model) => $model->toArray(),
+            ],
+            SecondModel::class => [
+                'model_exporter' => SecondModel::class,
+            ],
+        ]
+    }
+}
 ```
 
-## Testing
+Then you will have to register it in your `AppServiceProvider` like this :
 
-```bash
-composer test
+```php
+    public function register(): void
+    {
+        $this->app->bind('morphed-model-exporters', MyMorphedModelsExporters::class);
+    }
+```
+
+### Load morphed models
+
+You should typically load morphed models in Controllers :
+
+```php
+use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
+
+MorphedModelExporter::loadMorphedModels($myModels, 'myMorphToRelation');
+```
+
+### Export morphed models
+
+You should typically export morphed models in API resources :
+
+```php
+use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
+
+'my_morph_to_relation' => $this->whenLoaded(
+    'myMorphToRelation',
+    fn ($morphedModel) => MorphedModelExporter::exportModel($morphedModel)
+),
 ```
 
 ## Changelog
@@ -85,8 +92,8 @@ Please review [our security policy](../../security/policy) on how to report secu
 
 ## Credits
 
-- [:author_name](https://github.com/:author_username)
-- [All Contributors](../../contributors)
+-   [jean-philippe](https://github.com/comhon-project)
+-   [All Contributors](../../contributors)
 
 ## License
 
