@@ -78,7 +78,7 @@ class MorphedModelExporter
      */
     public function exportModel(?Model $model): mixed
     {
-        if (!$model) {
+        if (! $model) {
             return null;
         }
 
