@@ -76,8 +76,12 @@ class MorphedModelExporter
      *
      * Call the model exported associated with the givven model.
      */
-    public function exportModel(Model $model): mixed
+    public function exportModel(?Model $model): mixed
     {
+        if (!$model) {
+            return null;
+        }
+
         $exporter = $this->getModelExporter(get_class($model));
 
         return $exporter ? $exporter($model) : throw new MorphedModelExporterException('exporter not defined');
