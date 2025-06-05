@@ -35,7 +35,7 @@ class MyMorphedModelsExporters
     {
         return [
             FirstModel::class => [
-                'query_builder' => fn ($query) => $query->with('dependence')->select('id', 'dependence_id'),
+                'query_builder' => fn ($query) => $query->with('dependency')->select('id', 'dependency_id'),
                 'model_exporter' => fn ($model) => $model->toArray(),
             ],
             SecondModel::class => [
@@ -65,6 +65,34 @@ use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
 MorphedModelExporter::loadMorphedModels($myModels, 'myMorphToRelation');
 ```
 
+You can use additional parameters to load differents data according a certain context :
+
+```php
+class MyMorphedModelsExporters
+{
+    public function __construct(private array $exporters) {}
+
+    public function __invoke()
+    {
+        return [
+            FirstModel::class => [
+                'query_builder' => fn ($query, array $additionalColumns = []) => $query->select([
+                    'id',
+                    'dependency_id',
+                    ...$additionalColumns
+                ]),
+            ],
+        ]
+    }
+}
+```
+
+```php
+use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
+
+MorphedModelExporter::loadMorphedModels($myModels, 'myMorphToRelation', ['my_column']);
+```
+
 ### Export morphed models
 
 You should typically export morphed models in API resources :
@@ -76,6 +104,33 @@ use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
     'myMorphToRelation',
     fn ($morphedModel) => MorphedModelExporter::exportModel($morphedModel)
 ),
+```
+
+You can use additional parameters to export differents properties according a certain context :
+
+```php
+class MyMorphedModelsExporters
+{
+    public function __construct(private array $exporters) {}
+
+    public function __invoke()
+    {
+        return [
+            FirstModel::class => [
+                'model_exporter' => fn ($model, $private = false) => $private
+                    ? ['id' => $model->id, 'private' => $model->private]
+                    : ['id' => $model->id],
+            ],
+        ]
+    }
+}
+```
+
+```php
+use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
+
+$private = true;
+MorphedModelExporter::exportModel($morphedModel, $private);
 ```
 
 ## Changelog

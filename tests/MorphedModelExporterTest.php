@@ -10,10 +10,19 @@ use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\Assert as PHPUnit;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 class MorphedModelExporterTest extends TestCase
 {
     use RefreshDatabase;
+
+    public static function provideBoolean()
+    {
+        return [
+            [true],
+            [false],
+        ];
+    }
 
     private function registerShedulableExporters(array $exporters)
     {
@@ -30,11 +39,12 @@ class MorphedModelExporterTest extends TestCase
         });
     }
 
-    public function test_load_morphed_model_with_exporter_success()
+    #[DataProvider('provideBoolean')]
+    public function test_load_morphed_model_with_exporter_success($useParam)
     {
         $this->registerShedulableExporters([
             TrainingSession::class => [
-                'query_builder' => fn ($query) => $query->with('program:id,name')->select('id', 'training_program_id'),
+                'query_builder' => fn ($query, $withProgram = false) => $query->select('id', 'training_program_id')->with($withProgram ? ['program:id,name'] : []),
                 'model_exporter' => fn ($model) => $model,
             ],
             Appointment::class => [
@@ -48,10 +58,15 @@ class MorphedModelExporterTest extends TestCase
         $todos = Todo::all();
         $this->assertCount(2, $todos);
 
-        MorphedModelExporter::loadMorphedModels($todos, 'todoable');
+        $params = $useParam ? [true] : [];
+        MorphedModelExporter::loadMorphedModels($todos, 'todoable', ...$params);
 
         foreach ($todos as $todo) {
             $this->assertTrue($todo->relationLoaded('todoable'));
+            if ($todo->todoable instanceof TrainingSession) {
+                $this->assertNotNull($todo->todoable->training_program_id);
+                $this->assertEquals($useParam, $todo->todoable->relationLoaded('program'));
+            }
         }
     }
 
@@ -96,7 +111,13 @@ class MorphedModelExporterTest extends TestCase
         $this->registerShedulableExporters([
             TrainingSession::class => [
                 'query_builder' => fn ($query) => $query->with('program:id,name')->select('id', 'training_program_id'),
-                'model_exporter' => fn ($model) => $model,
+                'model_exporter' => function ($model, $context = null) {
+                    if ($context == 'insert_value') {
+                        $model->inserted_value = 'value';
+                    }
+
+                    return $model;
+                },
             ],
             Appointment::class => [
                 'model_exporter' => AppointmentResource::class,
@@ -111,7 +132,7 @@ class MorphedModelExporterTest extends TestCase
 
         MorphedModelExporter::loadMorphedModels($todos, 'todoable');
 
-        $exported = MorphedModelExporter::exportModel($todos[0]->todoable);
+        $exported = MorphedModelExporter::exportModel($todos[0]->todoable, 'insert_value');
         $this->assertInstanceOf(Model::class, $exported);
         PHPUnit::assertEquals([
             'id' => $trainingSession->id,
@@ -120,14 +141,20 @@ class MorphedModelExporterTest extends TestCase
                 'id' => $trainingSession->program->id,
                 'name' => $trainingSession->program->name,
             ],
+            'inserted_value' => 'value',
         ], $exported->toArray());
 
-        $exported = MorphedModelExporter::exportModel($todos[1]->todoable);
+        $exported = MorphedModelExporter::exportModel($todos[1]->todoable, 'insert_value');
         $this->assertInstanceOf(AppointmentResource::class, $exported);
         $this->assertEquals([
             'id' => $appointment->id,
             'created_at' => $appointment->created_at,
         ], $exported->toArray(null));
+    }
+
+    public function test_export_morphed_model_null()
+    {
+        $this->assertNull(MorphedModelExporter::exportModel(null));
     }
 
     public function test_get_exporter_undefined()

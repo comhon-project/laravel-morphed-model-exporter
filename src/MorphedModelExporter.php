@@ -75,8 +75,10 @@ class MorphedModelExporter
      * Export the model to be exported through an API.
      *
      * Call the model exported associated with the givven model.
+     *
+     * @param  mixed  ...$params  additional parameters injected when calling model_exporter closure
      */
-    public function exportModel(?Model $model): mixed
+    public function exportModel(?Model $model, ...$params): mixed
     {
         if (! $model) {
             return null;
@@ -84,15 +86,17 @@ class MorphedModelExporter
 
         $exporter = $this->getModelExporter(get_class($model));
 
-        return $exporter ? $exporter($model) : throw new MorphedModelExporterException('exporter not defined');
+        return $exporter ? $exporter($model, ...$params) : throw new MorphedModelExporterException('exporter not defined');
     }
 
     /**
      * Build query to load morphed models.
      *
      * If it exists, call the query builder associated with the model class.
+     *
+     * @param  mixed  ...$params  additional parameters injected when calling query_builder closure
      */
-    public function buildQuery(string $modelClass, array|Collection $ids): Builder
+    public function buildQuery(string $modelClass, array|Collection $ids, ...$params): Builder
     {
         $query = $modelClass::query()->whereIn((new $modelClass)->getKeyName(), $ids);
 
@@ -101,7 +105,7 @@ class MorphedModelExporter
             if (! ($builder instanceof \Closure)) {
                 throw new MorphedModelExporterException('invalid query builder, it must be a Closure');
             }
-            $builder($query);
+            $builder($query, ...$params);
         }
 
         return $query;
@@ -111,8 +115,10 @@ class MorphedModelExporter
      * Loads the given relationship for each models in the given collection.
      *
      * Only models for which an exporter is defined will be loaded.
+     *
+     * @param  mixed  ...$params  additional parameters injected when calling query_builder closure
      */
-    public function loadMorphedModels(Collection $models, string $morphToRelation): Collection
+    public function loadMorphedModels(Collection $models, string $morphToRelation, ...$params): Collection
     {
         if ($models->isEmpty() || ! $this->hasExporters()) {
             return $models;
@@ -138,7 +144,7 @@ class MorphedModelExporter
             if (! $this->hasModelExporter($class)) {
                 continue;
             }
-            $query = $this->buildQuery($class, $typeModels->pluck($foreignIdProperty));
+            $query = $this->buildQuery($class, $typeModels->pluck($foreignIdProperty), ...$params);
             $morphedModels = $query->get()->keyBy($query->getModel()->getKeyName());
 
             foreach ($typeModels as $model) {
