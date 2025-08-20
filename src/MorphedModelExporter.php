@@ -118,14 +118,19 @@ class MorphedModelExporter
      *
      * @param  mixed  ...$params  additional parameters injected when calling query_builder closure
      */
-    public function loadMorphedModels(Collection $models, string $morphToRelation, ...$params): Collection
+    public function loadMorphedModels(Collection|Model $models, string $morphToRelation, ...$params): Collection|Model
     {
-        if ($models->isEmpty() || ! $this->hasExporters()) {
+        $collection = $models instanceof Model
+            ? new Collection([$models])
+            : $models;
+
+        $collection = $collection->whereNotNull();
+        if ($collection->isEmpty() || ! $this->hasExporters()) {
             return $models;
         }
 
         try {
-            $relation = $models->first()->$morphToRelation();
+            $relation = $collection->first()->$morphToRelation();
             if (! $relation instanceof MorphTo) {
                 throw new \Exception;
             }
@@ -135,7 +140,7 @@ class MorphedModelExporter
 
         $foreignIdProperty = $relation->getForeignKeyName();
 
-        $grouped = $models->groupBy($relation->getMorphType());
+        $grouped = $collection->groupBy($relation->getMorphType());
         foreach ($grouped as $type => $typeModels) {
             if (! $type) {
                 continue;

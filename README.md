@@ -29,8 +29,6 @@ To do so, you must define a class with an `__invoke()` method that will return a
 ```php
 class MyMorphedModelsExporters
 {
-    public function __construct(private array $exporters) {}
-
     public function __invoke()
     {
         return [
@@ -49,11 +47,13 @@ class MyMorphedModelsExporters
 Then you will have to register it in your `AppServiceProvider` like this :
 
 ```php
-    public function register(): void
-    {
-        $this->app->bind('morphed-model-exporters', MyMorphedModelsExporters::class);
-    }
+public function register(): void
+{
+    $this->app->bind('morphed-model-exporters', MyMorphedModelsExporters::class);
+}
 ```
+
+Note: Your morphed model exporters class may also type-hint any dependencies they need on their constructors. This class is resolved via the Laravel service container, so dependencies will be injected automatically.
 
 ### Load morphed models
 
@@ -65,21 +65,19 @@ use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
 MorphedModelExporter::loadMorphedModels($myModels, 'myMorphToRelation');
 ```
 
-You can use additional parameters to load differents data according a certain context :
+You can use additional parameters to customize query according a certain context :
 
 ```php
 class MyMorphedModelsExporters
 {
-    public function __construct(private array $exporters) {}
-
     public function __invoke()
     {
         return [
             FirstModel::class => [
-                'query_builder' => fn ($query, array $additionalColumns = []) => $query->select([
+                'query_builder' => fn ($query, $columns = []) => $query->select([
                     'id',
                     'dependency_id',
-                    ...$additionalColumns
+                    ...$columns
                 ]),
             ],
         ]
@@ -106,19 +104,17 @@ use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
 ),
 ```
 
-You can use additional parameters to export differents properties according a certain context :
+You can use additional parameters to customize export according a certain context :
 
 ```php
 class MyMorphedModelsExporters
 {
-    public function __construct(private array $exporters) {}
-
     public function __invoke()
     {
         return [
             FirstModel::class => [
-                'model_exporter' => fn ($model, $private = false) => $private
-                    ? ['id' => $model->id, 'private' => $model->private]
+                'model_exporter' => fn ($model, $exportPrivate = false) => $exportPrivate
+                    ? ['id' => $model->id, 'private' => $model->is_private]
                     : ['id' => $model->id],
             ],
         ]
@@ -129,8 +125,8 @@ class MyMorphedModelsExporters
 ```php
 use Comhon\MorphedModelExporter\Facades\MorphedModelExporter;
 
-$private = true;
-MorphedModelExporter::exportModel($morphedModel, $private);
+$exportPrivate = true;
+MorphedModelExporter::exportModel($morphedModel, $exportPrivate);
 ```
 
 ## Changelog

@@ -58,8 +58,16 @@ class MorphedModelExporterTest extends TestCase
         $todos = Todo::all();
         $this->assertCount(2, $todos);
 
+        // prepend a null value that should not be taken in account
+        $todos->prepend(null);
+
         $params = $useParam ? [true] : [];
-        MorphedModelExporter::loadMorphedModels($todos, 'todoable', ...$params);
+        $result = MorphedModelExporter::loadMorphedModels($todos, 'todoable', ...$params);
+
+        $this->assertTrue($result === $todos);
+
+        $first = $todos->shift();
+        $this->assertNull($first);
 
         foreach ($todos as $todo) {
             $this->assertTrue($todo->relationLoaded('todoable'));
@@ -68,6 +76,26 @@ class MorphedModelExporterTest extends TestCase
                 $this->assertEquals($useParam, $todo->todoable->relationLoaded('program'));
             }
         }
+    }
+
+    public function test_load_morphed_unique_model_with_exporter_success()
+    {
+        $this->registerShedulableExporters([
+            Appointment::class => [
+                'model_exporter' => AppointmentResource::class,
+            ],
+        ]);
+
+        Appointment::factory()->has(Todo::factory(), 'todo')->create();
+
+        $todo = Todo::first();
+
+        $this->assertFalse($todo->relationLoaded('todoable'));
+
+        $result = MorphedModelExporter::loadMorphedModels($todo, 'todoable');
+
+        $this->assertTrue($result === $todo);
+        $this->assertTrue($todo->relationLoaded('todoable'));
     }
 
     public function test_load_morphed_model_without_exporter_success()
