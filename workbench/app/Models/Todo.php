@@ -16,4 +16,9 @@ class Todo extends Model
     {
         return $this->morphTo();
     }
+
+    public function todoableWithTrashed(): MorphTo
+    {
+        return $this->morphTo('todoableWithTrashed', 'todoable_type', 'todoable_id')->withTrashed();
+    }
 }

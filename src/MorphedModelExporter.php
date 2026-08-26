@@ -4,6 +4,7 @@ namespace Comhon\MorphedModelExporter;
 
 use Comhon\MorphedModelExporter\Exceptions\MorphedModelExporterException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -90,39 +91,16 @@ class MorphedModelExporter
     }
 
     /**
-     * Build query to load morphed models.
-     *
-     * If it exists, call the query builder associated with the model class.
-     *
-     * @param  mixed  ...$params  additional parameters injected when calling query_builder closure
-     */
-    public function buildQuery(string $modelClass, array|Collection $ids, ...$params): Builder
-    {
-        $query = $modelClass::query()->whereIn((new $modelClass)->getKeyName(), $ids);
-
-        $builder = $this->exporters[$modelClass][self::QUERY_BUILDER] ?? null;
-        if (isset($builder)) {
-            if (! ($builder instanceof \Closure)) {
-                throw new MorphedModelExporterException('invalid query builder, it must be a Closure');
-            }
-            $builder($query, ...$params);
-        }
-
-        return $query;
-    }
-
-    /**
      * Loads the given relationship for each models in the given collection.
      *
-     * Only models for which an exporter is defined will be loaded.
+     * Only models for which an exporter is defined will be loaded; models with
+     * a null morph type are marked as loaded (null).
      *
      * @param  mixed  ...$params  additional parameters injected when calling query_builder closure
      */
     public function loadMorphedModels(Collection|Model $models, string $morphToRelation, ...$params): Collection|Model
     {
-        $collection = $models instanceof Model
-            ? new Collection([$models])
-            : $models;
+        $collection = new EloquentCollection($models instanceof Model ? [$models] : $models);
 
         $collection = $collection->whereNotNull();
         if ($collection->isEmpty() || ! $this->hasExporters()) {
@@ -138,24 +116,37 @@ class MorphedModelExporter
             throw new MorphedModelExporterException("invalid relationship '$morphToRelation', it must be a MorphTo relationship");
         }
 
-        $foreignIdProperty = $relation->getForeignKeyName();
+        $morphType = $relation->getMorphType();
 
-        $grouped = $collection->groupBy($relation->getMorphType());
-        foreach ($grouped as $type => $typeModels) {
+        $loadables = $collection->filter(function ($model) use ($morphType) {
+            $type = $model->$morphType;
+
+            return ! $type || $this->hasModelExporter(Relation::getMorphedModel($type) ?? $type);
+        });
+        if ($loadables->isEmpty()) {
+            return $models;
+        }
+
+        $constraints = [];
+        foreach ($loadables->pluck($morphType)->unique() as $type) {
             if (! $type) {
                 continue;
             }
             $class = Relation::getMorphedModel($type) ?? $type;
-            if (! $this->hasModelExporter($class)) {
+            $builder = $this->exporters[$class][self::QUERY_BUILDER] ?? null;
+            // a type without constraint is still loaded, just without a customized query
+            if (! isset($builder)) {
                 continue;
             }
-            $query = $this->buildQuery($class, $typeModels->pluck($foreignIdProperty), ...$params);
-            $morphedModels = $query->get()->keyBy($query->getModel()->getKeyName());
-
-            foreach ($typeModels as $model) {
-                $model->setRelation($morphToRelation, $morphedModels->get($model->$foreignIdProperty));
+            if (! ($builder instanceof \Closure)) {
+                throw new MorphedModelExporterException('invalid query builder, it must be a Closure');
             }
+            $constraints[$class] = fn (Builder $query) => $builder($query, ...$params);
         }
+
+        $loadables->load([
+            $morphToRelation => fn (MorphTo $morphTo) => $morphTo->constrain($constraints),
+        ]);
 
         return $models;
     }

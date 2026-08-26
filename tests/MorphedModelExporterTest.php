@@ -130,8 +130,53 @@ class MorphedModelExporterTest extends TestCase
         MorphedModelExporter::loadMorphedModels($todos, 'todoable');
 
         foreach ($todos as $todo) {
-            $this->assertFalse($todo->relationLoaded('todoable'));
+            if ($todo->todoable_type === null) {
+                $this->assertTrue($todo->relationLoaded('todoable'));
+                $this->assertNull($todo->todoable);
+            } else {
+                $this->assertFalse($todo->relationLoaded('todoable'));
+            }
         }
+    }
+
+    public function test_load_morphed_model_only_models_without_exporter_success()
+    {
+        $this->registerShedulableExporters([
+            Appointment::class => [
+                'model_exporter' => AppointmentResource::class,
+            ],
+        ]);
+
+        TrainingSession::factory()->has(Todo::factory(), 'todo')->create();
+
+        $todos = Todo::all();
+        MorphedModelExporter::loadMorphedModels($todos, 'todoable');
+
+        $this->assertFalse($todos->first()->relationLoaded('todoable'));
+    }
+
+    public function test_load_morphed_model_honors_relation_constraints()
+    {
+        $this->registerShedulableExporters([
+            Appointment::class => [
+                'model_exporter' => AppointmentResource::class,
+            ],
+        ]);
+
+        $appointment = Appointment::factory()->has(Todo::factory(), 'todo')->create();
+        $appointment->delete();
+
+        $todos = Todo::all();
+        MorphedModelExporter::loadMorphedModels($todos, 'todoable');
+        $this->assertTrue($todos->first()->relationLoaded('todoable'));
+        $this->assertNull($todos->first()->todoable);
+
+        $todos = Todo::all();
+        MorphedModelExporter::loadMorphedModels($todos, 'todoableWithTrashed');
+        $this->assertTrue($todos->first()->relationLoaded('todoableWithTrashed'));
+        $this->assertNotNull($todos->first()->todoableWithTrashed);
+        $this->assertTrue($todos->first()->todoableWithTrashed->is($appointment));
+        $this->assertTrue($todos->first()->todoableWithTrashed->trashed());
     }
 
     public function test_export_morphed_models()
@@ -207,7 +252,7 @@ class MorphedModelExporterTest extends TestCase
         MorphedModelExporter::getModelExporter(Appointment::class);
     }
 
-    public function test_build_query_invalid()
+    public function test_load_morphed_model_invalid_query_builder()
     {
         MorphedModelExporter::registerExporters([
             Appointment::class => [
@@ -216,8 +261,10 @@ class MorphedModelExporterTest extends TestCase
             ],
         ]);
 
+        Appointment::factory()->has(Todo::factory(), 'todo')->create();
+
         $this->expectExceptionMessage('invalid query builder, it must be a Closure');
-        MorphedModelExporter::buildQuery(Appointment::class, []);
+        MorphedModelExporter::loadMorphedModels(Todo::all(), 'todoable');
     }
 
     public function test_load_morph_model_invalid_relation_not_morph_to()
